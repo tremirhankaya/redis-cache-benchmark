@@ -3,9 +3,9 @@ spring:
     name: redis-cache-benchmark
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/redisbench
-    username: redisbench
-    password: redisbench
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/redisbench}
+    username: ${DB_USERNAME:redisbench}
+    password: ${DB_PASSWORD:redisbench}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -33,14 +33,14 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6380
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
       timeout: 2000ms
 
   cache:
     type: redis
     redis:
-      time-to-live: 600000   # 10 dk default TTL
+      time-to-live: 600000
       cache-null-values: false
 
 server:

@@ -4,15 +4,15 @@ services:
     container_name: redis-bench-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: redisbench
-      POSTGRES_USER: redisbench
-      POSTGRES_PASSWORD: redisbench
+      POSTGRES_DB: ${POSTGRES_DB:-redisbench}
+      POSTGRES_USER: ${POSTGRES_USER:-redisbench}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-redisbench}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U redisbench -d redisbench"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-redisbench} -d ${POSTGRES_DB:-redisbench}"]
       interval: 5s
       timeout: 5s
       retries: 10
