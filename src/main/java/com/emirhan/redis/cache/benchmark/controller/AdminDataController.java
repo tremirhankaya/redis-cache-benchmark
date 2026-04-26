@@ -21,8 +21,13 @@ public class AdminDataController {
         return ResponseEntity.noContent().build();
     }
 
-//    @PostMapping
-//    public ResponseEntity<Void> seedData() {
-//
-//    }
+
+
+    @PostMapping("/factory-reset")
+    public ResponseEntity<Void> factoryReset(@RequestParam(required = false) Integer products) {
+        log.info("Factory reset request received (products={})", products);
+        adminService.factoryReset(products);
+        log.info("Factory reset completed");
+        return ResponseEntity.noContent().build();
+    }
 }

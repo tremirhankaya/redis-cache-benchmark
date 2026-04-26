@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>Saved Runs - redis-cache-benchmark</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  th { background-color: #f4f4f4; }
+  h1 { border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>PostgreSQL Saved Test Runs</h1>
+<p>
+  <button onclick="window.close()">Kapat</button>
+  <button onclick="clearSaved()" style="color:red">Tümünü Sil (Truncate)</button>
+  <button onclick="exportSavedCsv()">CSV Export</button>
+  <button onclick="fetchRuns()">Refresh</button>
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>#ID</th><th>Scenario</th><th>Endpoint</th><th>Req (n)</th><th>Seed</th>
+      <th>Avg ms</th><th>Min</th><th>Max</th><th>Median</th><th>p95</th>
+      <th>HIT</th><th>MISS</th><th>DISABLED</th><th>Hit Ratio</th><th>Time</th>
+    </tr>
+  </thead>
+  <tbody id="savedBody"><tr><td colspan="15"><i>Yükleniyor...</i></td></tr></tbody>
+</table>
+
+<canvas id="compareChart" width="800" height="250"></canvas>
+
+<script>
+let savedRuns = [];
+let compareChartObj = null;
+
+async function fetchRuns() {
+  try {
+    const res = await fetch('/api/internal-runs');
+    savedRuns = await res.json();
+    renderSaved();
+  } catch (err) {
+    document.getElementById('savedBody').innerHTML = '<tr><td colspan="15" style="color:red">Bağlantı hatası: ' + err.message + '</td></tr>';
+  }
+}
+
+async function clearSaved() {
+  if (!confirm('PostgreSQL veritabanındaki tüm test geçmişini kalıcı olarak silmek istediğine emin misin?')) return;
+  await fetch('/api/internal-runs', { method: 'DELETE' });
+  await fetchRuns();
+}
+
+function renderSaved() {
+  if (!savedRuns.length) {
+    document.getElementById('savedBody').innerHTML = '<tr><td colspan="15"><i>Veritabanında kayıt yok.</i></td></tr>';
+    drawCompareChart();
+    return;
+  }
+  document.getElementById('savedBody').innerHTML = savedRuns.map(r =>
+    `<tr>
+      <td>${r.id}</td><td><b>${r.scenario}</b></td><td>${r.endpoint}</td><td>${r.requestCount}</td><td>${r.testSeed}</td>
+      <td><b>${parseFloat(r.avgMs).toFixed(2)}</b></td>
+      <td>${parseFloat(r.minMs).toFixed(2)}</td>
+      <td>${parseFloat(r.maxMs).toFixed(2)}</td>
+      <td>${parseFloat(r.medianMs).toFixed(2)}</td>
+      <td>${parseFloat(r.p95Ms).toFixed(2)}</td>
+      <td>${r.hits}</td><td>${r.miss}</td><td>${r.disabled}</td><td>${r.hitRatio}</td>
+      <td>${new Date(r.createdAt).toLocaleString()}</td>
+    </tr>`
+  ).join('');
+  drawCompareChart();
+}
+
+function drawCompareChart() {
+  const ctx = document.getElementById('compareChart').getContext('2d');
+  if (compareChartObj) compareChartObj.destroy();
+  if (savedRuns.length < 1) return;
+
+  const labels = savedRuns.map(r => `#${r.id} ${r.scenario}`);
+  const colorMap = { baseline: '#4682B4', cold: '#DAA520', warm: '#228B22', mixed: '#9370DB' };
+  const colors = savedRuns.map(r => colorMap[r.scenario] || '#808080');
+
+  compareChartObj = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Avg ms (Postgres)', data: savedRuns.map(r => r.avgMs), backgroundColor: colors, borderWidth: 0 },
+      ]
+    },
+    options: {
+      plugins: { legend: { display: true } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' } } }
+    }
+  });
+}
+
+function exportSavedCsv() {
+  const head = 'id,scenario,endpoint,n,seed,avg_ms,min_ms,max_ms,median_ms,p95_ms,hits,miss,disabled,hit_ratio,created_at\n';
+  const rows = savedRuns.map(r =>
+    [r.id, r.scenario, r.endpoint, r.requestCount, r.testSeed, r.avgMs, r.minMs, r.maxMs, r.medianMs, r.p95Ms,
+     r.hits, r.miss, r.disabled, r.hitRatio, r.createdAt].join(','));
+  const blob = new Blob([head + rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'rcb-db-export-' + Date.now() + '.csv'; a.click();
+}
+
+// Init
+fetchRuns();
+</script>
+</body>
+</html>

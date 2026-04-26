@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>redis-cache-benchmark</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<h1>redis-cache-benchmark</h1>
+<hr />
+
+<!-- ══════════ CACHE CONTROL ══════════ -->
+<h2>Cache Control</h2>
+<table border="1" cellpadding="4">
+  <tr>
+    <td><b>Toggle:</b> <span id="stEnabled">—</span></td>
+    <td><b>Redis Keys:</b> <span id="stKeys">—</span></td>
+    <td><b>Manager:</b> <span id="stMgr">—</span></td>
+  </tr>
+</table>
+<p>
+  <button onclick="toggle(true)">Enable Cache</button>
+  <button onclick="toggle(false)">Disable Cache</button>
+  <button onclick="clearCache()">Clear Cache</button>
+  <button onclick="refreshStatus()">Refresh</button>
+  |
+  <button onclick="factoryReset()" style="color:red">Factory Reset</button>
+  <small>(truncate all + redis flush + re-seed 200K)</small>
+</p>
+
+<hr />
+
+<!-- ══════════ SCENARIO TEST ══════════ -->
+<h2>Scenario Test <small>(prepare + run + record)</small></h2>
+
+<fieldset>
+  <legend><b>Test Settings</b> <small>(tüm senaryolar bu ayarlarla koşar)</small></legend>
+  <table cellpadding="4">
+    <tr>
+      <td>Endpoint:</td>
+      <td>
+        <select id="stEndpoint">
+          <option value="byId">products/{id}</option>
+          <option value="list">products?category=</option>
+          <option value="search">products/search?q=</option>
+        </select>
+      </td>
+      <td>Requests (n):</td>
+      <td><input id="stCount" type="number" value="50" min="5" size="6" /> <small>kaç istek atılacak</small></td>
+    </tr>
+    <tr>
+      <td>Max ID:</td>
+      <td><input id="stMaxId" type="number" value="200000" size="10" /></td>
+      <td>Seed:</td>
+      <td><input id="stSeed" type="number" value="42" size="5" /></td>
+    </tr>
+  </table>
+  <small>Aynı seed + aynı n = aynı ID dizisi → senaryolar arası adil karşılaştırma</small>
+</fieldset>
+<br />
+
+<table border="1" cellpadding="4">
+  <tr>
+    <th>Scenario</th><th>Cache</th><th>Detail</th><th></th>
+  </tr>
+  <tr>
+    <td><b>BASELINE</b></td>
+    <td>OFF</td>
+    <td>Saf DB performansı. Cache yok.</td>
+    <td><button onclick="prepareAndRun('baseline')">Prepare & Run</button></td>
+  </tr>
+  <tr>
+    <td><b>COLD</b></td>
+    <td>ON (empty)</td>
+    <td>Cache açık ama boş. İlk istekler MISS.</td>
+    <td><button onclick="prepareAndRun('cold')">Prepare & Run</button></td>
+  </tr>
+  <tr>
+    <td><b>WARM</b></td>
+    <td>ON (full)</td>
+    <td>Tüm ürünler Redis'te. Her istek HIT.</td>
+    <td><button onclick="prepareAndRun('warm')">Prepare & Run</button></td>
+  </tr>
+  <tr>
+    <td><b>MIXED</b></td>
+    <td>ON (popular 10%)</td>
+    <td>Gerçekçi 80/20. Popüler subset cached.</td>
+    <td><button onclick="prepareAndRun('mixed')">Prepare & Run</button></td>
+  </tr>
+</table>
+<p>
+  <b>Status:</b> <span id="scInfo">idle</span><br />
+  <progress id="scBar" value="0" max="100" style="width:400px"></progress>
+</p>
+
+<!-- Live chart for current run -->
+<canvas id="runChart" width="800" height="200"></canvas>
+<pre id="runStats">no run yet</pre>
+
+<hr />
+
+<!-- ══════════ SAVED RESULTS ══════════ -->
+<h2>Saved Results <small>(PostgreSQL History)</small></h2>
+<p>
+  Tüm sonuçlar işlemin sonunda otomatik olarak PostgreSQL veritabanına kalıcı biçimde kaydedilmektedir.<br/><br/>
+  <a href="/history.html" target="_blank"><button style="padding:10px; font-weight:bold;">Tüm Tarihçeyi Gör ve Karşılaştır (Yeni Sekme)</button></a>
+</p>
+
+<hr />
+
+<!-- ══════════ ENDPOINT PROBES ══════════ -->
+<h2>Endpoint Probes <small>(tek istek, server-side timing)</small></h2>
+
+<h3>GET /api/products/{id}</h3>
+<form onsubmit="callById(); return false;">
+  id: <input id="epIdVal" type="number" value="1" min="1" size="8" />
+  <button type="submit">Run</button>
+  &nbsp; → <b id="epIdMs">—</b> <span id="epIdCache"></span>
+</form>
+<pre id="epIdJson">—</pre>
+
+<h3>GET /api/products?category=&amp;page=&amp;size=</h3>
+<form onsubmit="callList(); return false;">
+  category: <input id="epListCat" type="number" value="1" size="5" />
+  page: <input id="epListPage" type="number" value="0" size="5" />
+  size: <input id="epListSize" type="number" value="20" size="5" />
+  <button type="submit">Run</button>
+  &nbsp; → <b id="epListMs">—</b> <span id="epListCache"></span>
+</form>
+<pre id="epListJson">—</pre>
+
+<h3>GET /api/products/search?q=</h3>
+<form onsubmit="callSearch(); return false;">
+  q: <input id="epSearchQ" type="text" value="co" size="15" />
+  <button type="submit">Run</button>
+  &nbsp; → <b id="epSearchMs">—</b> <span id="epSearchCache"></span>
+</form>
+<pre id="epSearchJson">—</pre>
+
+<hr />
+
+<!-- ══════════ REQUEST LOG ══════════ -->
+<h2>Request Log <small>(last 5000)</small></h2>
+<p>
+  <button onclick="exportCsv()">Export CSV</button>
+  <button onclick="clearHistory()">Clear</button>
+</p>
+<div style="max-height:400px;overflow:auto">
+<table border="1" cellpadding="3" width="100%">
+  <thead>
+    <tr><th>#</th><th>Time</th><th>Path</th><th>Status</th><th>Server ms</th><th>Client ms</th><th>Cache</th></tr>
+  </thead>
+  <tbody id="histBody"></tbody>
+</table>
+</div>
+
+<hr />
+
+<!-- ══════════ UPLOAD JMETER ══════════ -->
+<h2>Upload JMeter Results</h2>
+<form onsubmit="uploadResults(); return false;">
+  <table cellpadding="4">
+    <tr><td>CSV file:</td><td><input type="file" id="ulFile" accept=".csv" /></td></tr>
+    <tr><td>Test name:</td><td><input type="text" id="ulName" placeholder="warm-100users" size="25" /></td></tr>
+    <tr>
+      <td>Scenario:</td>
+      <td><select id="ulScenario"><option>baseline</option><option>cold</option><option>warm</option><option>mixed</option></select></td>
+    </tr>
+    <tr><td>Concurrent users:</td><td><input type="number" id="ulLoad" value="1" size="5" /></td></tr>
+    <tr><td></td><td><button type="submit">Upload</button></td></tr>
+  </table>
+</form>
+<p id="ulStatus"></p>
+
+<hr />
+<p><small>redis-cache-benchmark — Haliç Üniversitesi MIS 2026</small></p>
+
+<!-- ══════════ JAVASCRIPT ══════════ -->
+<script>
+const HISTORY_KEY = 'rcb-history-v4';
+let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+let cacheEnabled = false;
+
+// ── API ──
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const t0 = performance.now();
+  let res, clientMs, data = null, ok = false, status = 0;
+  let serverMs = null, cacheStatus = null;
+  try {
+    res = await fetch(path, opts);
+    clientMs = performance.now() - t0;
+    status = res.status; ok = res.ok;
+    serverMs = res.headers.get('X-Response-Time-Ms');
+    cacheStatus = res.headers.get('X-Cache-Status');
+    const text = await res.text();
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  } catch (e) {
+    clientMs = performance.now() - t0;
+    data = { error: e.message };
+  }
+  return { ok, status, data, path, method, clientMs: Math.round(clientMs),
+    serverMs: serverMs ? parseFloat(serverMs) : null, cacheStatus: cacheStatus || null };
+}
+
+function fmt(o, max = 500) {
+  if (o == null) return '—';
+  const s = JSON.stringify(o, null, 2);
+  return s.length > max ? s.slice(0, max) + '\n…' : s;
+}
+
+// ── Cache Status ──
+async function refreshStatus() {
+  const r = await api('GET', '/api/cache/status');
+  const d = r.data || {};
+  cacheEnabled = !!d.enabled;
+  document.getElementById('stEnabled').textContent = cacheEnabled ? 'ON ✓' : 'OFF ✗';
+  document.getElementById('stKeys').textContent = d.keyCount ?? '—';
+  document.getElementById('stMgr').textContent = d.cacheManager ?? '—';
+}
+async function toggle(enabled) { await api('POST', `/api/cache/toggle?enabled=${enabled}`); await refreshStatus(); }
+async function clearCache() { await api('DELETE', '/api/cache/clear'); await refreshStatus(); }
+async function factoryReset() {
+  if (!confirm('Tüm DB truncate + Redis flush + 200K re-seed. Emin misin?')) return;
+  document.getElementById('stEnabled').textContent = 'resetting…';
+  await api('POST', '/api/admin/factory-reset');
+  await refreshStatus();
+}
+
+// ── PRNG ──
+function mulberry32(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seededInt(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
+
+// ── Scenario: Prepare & Run ──
+let runChartObj = null;
+
+async function prepareAndRun(scenario) {
+  const info = document.getElementById('scInfo');
+  const bar = document.getElementById('scBar');
+
+  // 1) Prepare
+  info.textContent = scenario + ' — preparing…';
+  bar.value = 0;
+  await api('POST', `/api/test/prepare?scenario=${scenario}`);
+
+  // Poll until ready
+  await new Promise((resolve) => {
+    const poll = setInterval(async () => {
+      const r = await api('GET', '/api/test/status');
+      const d = r.data || {};
+      const pct = d.percent || 0;
+      bar.value = pct;
+      info.textContent = `${scenario} > ${d.phase || '-'} ${pct}% ${d.message ? '| ' + d.message : ''}`;
+      if (d.ready || d.phase === 'FAILED') {
+        clearInterval(poll);
+        if (d.phase === 'FAILED') { info.textContent = scenario + ' — FAILED: ' + d.message; }
+        resolve(d.ready);
+      }
+    }, 1000);
+  }).then(async (ready) => {
+    if (!ready) return;
+    await refreshStatus();
+
+    // 2) Run batch test
+    info.textContent = scenario + ' — running test…';
+    const results = await runBatch(scenario);
+
+    // 3) Save results to DB
+    info.textContent = scenario + ' — saving to DB…';
+    await saveRun(scenario, results);
+    info.textContent = scenario + ' — done ✓ (Saved to DB)';
+  });
+}
+
+async function runBatch(scenario) {
+  const ep = document.getElementById('stEndpoint').value;
+  const n = parseInt(document.getElementById('stCount').value, 10);
+  const maxId = parseInt(document.getElementById('stMaxId').value, 10) || 200000;
+  const seed = parseInt(document.getElementById('stSeed').value, 10) || 42;
+  const searchTerms = ['a','e','i','o','co','in','le','er','an','or','pro','ba','ma','ch','re','te','bo','ca'];
+  const rng = mulberry32(seed);
+
+  const results = [];
+  for (let i = 0; i < n; i++) {
+    let r;
+    if (ep === 'byId') {
+      r = await api('GET', `/api/products/${seededInt(rng, 1, maxId)}`);
+    } else if (ep === 'list') {
+      r = await api('GET', `/api/products?category=${seededInt(rng, 1, 50)}&page=0&size=20`);
+    } else {
+      r = await api('GET', `/api/products/search?q=${encodeURIComponent(searchTerms[seededInt(rng, 0, searchTerms.length - 1)])}`);
+    }
+    results.push(r);
+    recordHistory(r);
+  }
+  await refreshStatus();
+
+  // Stats
+  const times = results.map(r => r.serverMs != null ? r.serverMs : r.clientMs);
+  const statuses = results.map(r => r.cacheStatus || 'UNKNOWN');
+  const stats = calcStats(times, statuses);
+  drawRunChart(times, statuses, scenario);
+  document.getElementById('runStats').textContent =
+    `${scenario} | n=${stats.n} avg=${stats.avg}ms min=${stats.min}ms max=${stats.max}ms ` +
+    `median=${stats.median}ms p95=${stats.p95}ms | HIT=${stats.hits} MISS=${stats.miss} DISABLED=${stats.disabled} ratio=${stats.ratio}`;
+
+  return { ep, n, seed, maxId, times, statuses, stats };
+}
+
+function calcStats(times, statuses) {
+  const sorted = [...times].sort((a,b) => a-b);
+  const n = times.length;
+  const hits = statuses.filter(s => s === 'HIT').length;
+  const miss = statuses.filter(s => s === 'MISS').length;
+  const disabled = statuses.filter(s => s === 'DISABLED').length;
+  const ratio = (hits + miss) > 0 ? ((hits / (hits + miss)) * 100).toFixed(1) + '%' : '—';
+  return {
+    n, hits, miss, disabled, ratio,
+    avg: (times.reduce((a,b) => a+b, 0) / n).toFixed(2),
+    min: sorted[0].toFixed(2),
+    max: sorted[n-1].toFixed(2),
+    median: sorted[Math.floor(n/2)].toFixed(2),
+    p95: sorted[Math.floor(n * 0.95)].toFixed(2),
+  };
+}
+
+function drawRunChart(times, statuses, label) {
+  const ctx = document.getElementById('runChart').getContext('2d');
+  const colorMap = { HIT: '#228B22', MISS: '#B22222', DISABLED: '#DAA520', UNKNOWN: '#808080' };
+  if (runChartObj) runChartObj.destroy();
+  runChartObj = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: times.map((_, i) => i + 1),
+      datasets: [{ label, data: times, backgroundColor: statuses.map(s => colorMap[s] || '#808080'), borderWidth: 0 }]
+    },
+    options: {
+      plugins: { legend: { display: true } },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'ms (server)' } },
+        x: { title: { display: true, text: 'request #' } }
+      }
+    }
+  });
+}
+
+// ── Saved Results DB Push ──
+async function saveRun(scenario, data) {
+  const ddb = {
+    scenario: scenario,
+    endpoint: data.ep,
+    requestCount: data.n,
+    testSeed: data.seed,
+    avgMs: data.stats.avg,
+    minMs: data.stats.min,
+    maxMs: data.stats.max,
+    medianMs: data.stats.median,
+    p95Ms: data.stats.p95,
+    hits: data.stats.hits,
+    miss: data.stats.miss,
+    disabled: data.stats.disabled,
+    hitRatio: data.stats.ratio
+  };
+  try {
+    await api('POST', '/api/internal-runs', ddb);
+  } catch(e) {
+    console.error("DB Save failed", e);
+  }
+}
+
+// ── Endpoint Probes ──
+function showEp(msId, cacheId, jsonId, r) {
+  const ms = r.serverMs != null ? r.serverMs.toFixed(2) + ' ms (server)' : r.clientMs + ' ms (client)';
+  document.getElementById(msId).textContent = ms;
+  document.getElementById(cacheId).textContent = r.cacheStatus ? `[${r.cacheStatus}]` : '';
+  document.getElementById(jsonId).textContent = fmt(r.data);
+  recordHistory(r);
+  refreshStatus();
+}
+async function callById() {
+  showEp('epIdMs', 'epIdCache', 'epIdJson', await api('GET', `/api/products/${document.getElementById('epIdVal').value}`));
+}
+async function callList() {
+  const cat = document.getElementById('epListCat').value, pg = document.getElementById('epListPage').value, sz = document.getElementById('epListSize').value;
+  showEp('epListMs', 'epListCache', 'epListJson', await api('GET', `/api/products?category=${cat}&page=${pg}&size=${sz}`));
+}
+async function callSearch() {
+  showEp('epSearchMs', 'epSearchCache', 'epSearchJson',
+    await api('GET', `/api/products/search?q=${encodeURIComponent(document.getElementById('epSearchQ').value)}`));
+}
+
+// ── History ──
+function recordHistory(r) {
+  history.unshift({
+    ts: new Date().toLocaleTimeString(), path: r.path, status: r.status,
+    serverMs: r.serverMs, clientMs: r.clientMs,
+    cacheStatus: r.cacheStatus || (cacheEnabled ? 'UNKNOWN' : 'DISABLED')
+  });
+  if (history.length > 5000) history.length = 5000;
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  document.getElementById('histBody').innerHTML = history.map((h, i) => {
+    const sMs = h.serverMs != null ? h.serverMs.toFixed(2) : '—';
+    const bg = h.cacheStatus === 'HIT' ? '#e0ffe0' : h.cacheStatus === 'MISS' ? '#ffe0e0' : '';
+    return `<tr style="background:${bg}">
+      <td>${history.length - i}</td><td>${h.ts}</td><td>${h.path}</td><td>${h.status}</td>
+      <td><b>${sMs}</b></td><td>${h.clientMs}</td><td>${h.cacheStatus || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function clearHistory() { history = []; localStorage.removeItem(HISTORY_KEY); renderHistory(); }
+
+function exportCsv() {
+  const head = 'index,time,path,status,server_ms,client_ms,cache_status\n';
+  const rows = history.map((h, i) =>
+    [history.length - i, h.ts, h.path, h.status, h.serverMs ?? '', h.clientMs, h.cacheStatus || ''].join(','));
+  const blob = new Blob([head + rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'rcb-log-' + Date.now() + '.csv'; a.click();
+}
+
+// ── Upload JMeter ──
+async function uploadResults() {
+  const file = document.getElementById('ulFile').files[0];
+  if (!file) { document.getElementById('ulStatus').textContent = '⚠ file seç'; return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('name', document.getElementById('ulName').value || file.name);
+  fd.append('scenario', document.getElementById('ulScenario').value);
+  fd.append('load', document.getElementById('ulLoad').value);
+  document.getElementById('ulStatus').textContent = 'uploading…';
+  try {
+    const res = await fetch('/api/results/upload', { method: 'POST', body: fd });
+    if (res.ok) {
+      const d = await res.json();
+      document.getElementById('ulStatus').textContent =
+        `✓ ${d.name} | avg=${d.avgMs?.toFixed(2)}ms | p95=${d.p95?.toFixed(2)}ms | ${d.totalRequests} req`;
+    } else {
+      document.getElementById('ulStatus').textContent = `✗ upload failed (${res.status})`;
+    }
+  } catch (e) { document.getElementById('ulStatus').textContent = '✗ ' + e.message; }
+}
+
+// ── Init ──
+renderHistory();
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>

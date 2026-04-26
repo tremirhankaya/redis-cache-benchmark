@@ -37,6 +37,12 @@ spring:
       port: 6380
       timeout: 2000ms
 
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000   # 10 dk default TTL
+      cache-null-values: false
+
 server:
   port: 8080
 
@@ -48,7 +54,7 @@ logging:
 app:
   seed:
     enabled: true
-    products: 1000
+    products: 200000
     categories: 50
     brands: 200
     batch-size: 1000

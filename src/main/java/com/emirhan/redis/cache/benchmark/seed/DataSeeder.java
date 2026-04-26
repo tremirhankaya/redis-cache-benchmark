@@ -57,6 +57,14 @@ public class DataSeeder implements CommandLineRunner {
             log.info("Seed skipped — product count already >= {}", productCount);
             return;
         }
+        seed(null);
+    }
+
+
+    public void seed(Integer overrideProductCount) {
+        int targetProductCount = overrideProductCount != null && overrideProductCount > 0
+                ? overrideProductCount
+                : this.productCount;
 
         long t0 = System.currentTimeMillis();
         Faker faker = new Faker(new Locale("en"));
@@ -64,11 +72,11 @@ public class DataSeeder implements CommandLineRunner {
 
         List<Brand> brands = seedBrands(faker);
         List<Category> categories = seedCategories(faker);
-        seedProducts(faker, random, brands, categories);
+        seedProducts(faker, random, brands, categories, targetProductCount);
 
         long elapsed = System.currentTimeMillis() - t0;
         log.info("Seed complete: {} brands, {} categories, {} products in {} ms",
-                brands.size(), categories.size(), productCount, elapsed);
+                brands.size(), categories.size(), targetProductCount, elapsed);
     }
 
     protected List<Brand> seedBrands(Faker faker) {
@@ -112,10 +120,10 @@ public class DataSeeder implements CommandLineRunner {
         return all;
     }
 
-    protected void seedProducts(Faker faker, Random random, List<Brand> brands, List<Category> categories) {
+    protected void seedProducts(Faker faker, Random random, List<Brand> brands, List<Category> categories, int targetCount) {
         long existing = productRepository.count();
-        int remaining = (int) Math.max(0, productCount - existing);
-        log.info("Seeding {} products (existing: {})", remaining, existing);
+        int remaining = (int) Math.max(0, targetCount - existing);
+        log.info("Seeding {} products (existing: {}, target: {})", remaining, existing, targetCount);
 
         List<Product> batch = new ArrayList<>(batchSize);
         long batchT0 = System.currentTimeMillis();
