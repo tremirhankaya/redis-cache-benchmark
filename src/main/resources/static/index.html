@@ -82,12 +82,6 @@
     <td>Tüm ürünler Redis'te. Her istek HIT.</td>
     <td><button onclick="prepareAndRun('warm')">Prepare & Run</button></td>
   </tr>
-  <tr>
-    <td><b>MIXED</b></td>
-    <td>ON (popular 10%)</td>
-    <td>Gerçekçi 80/20. Popüler subset cached.</td>
-    <td><button onclick="prepareAndRun('mixed')">Prepare & Run</button></td>
-  </tr>
 </table>
 <p>
   <b>Status:</b> <span id="scInfo">idle</span><br />
@@ -156,22 +150,6 @@
 </div>
 
 <hr />
-
-<!-- ══════════ UPLOAD JMETER ══════════ -->
-<h2>Upload JMeter Results</h2>
-<form onsubmit="uploadResults(); return false;">
-  <table cellpadding="4">
-    <tr><td>CSV file:</td><td><input type="file" id="ulFile" accept=".csv" /></td></tr>
-    <tr><td>Test name:</td><td><input type="text" id="ulName" placeholder="warm-100users" size="25" /></td></tr>
-    <tr>
-      <td>Scenario:</td>
-      <td><select id="ulScenario"><option>baseline</option><option>cold</option><option>warm</option><option>mixed</option></select></td>
-    </tr>
-    <tr><td>Concurrent users:</td><td><input type="number" id="ulLoad" value="1" size="5" /></td></tr>
-    <tr><td></td><td><button type="submit">Upload</button></td></tr>
-  </table>
-</form>
-<p id="ulStatus"></p>
 
 <hr />
 <p><small>redis-cache-benchmark — Haliç Üniversitesi MIS 2026</small></p>
