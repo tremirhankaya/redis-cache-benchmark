@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.emirhan.redis.cache.benchmark.dto.PageResponse;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -83,10 +84,10 @@ public class ProductServiceImpl implements ProductService {
         trackMissOrDisabled();
         log.debug("DB hit: search q={}", q);
         if (q == null || q.isBlank()) {
-            return List.of();
+            return new ArrayList<>();
         }
         List<Product> result = productRepository.search(q.trim(), PageRequest.of(0, SEARCH_LIMIT));
-        return result.stream().map(ProductDto::from).toList();
+        return new ArrayList<>(result.stream().map(ProductDto::from).toList());
     }
 
     /**
