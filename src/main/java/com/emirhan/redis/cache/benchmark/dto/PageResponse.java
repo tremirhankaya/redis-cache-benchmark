@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.domain.Page;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -23,7 +24,7 @@ public class PageResponse<T> implements Serializable {
 
     public static <T> PageResponse<T> from(Page<T> page) {
         return PageResponse.<T>builder()
-                .content(page.getContent())
+                .content(new ArrayList<>(page.getContent()))
                 .pageNumber(page.getNumber())
                 .pageSize(page.getSize())
                 .totalElements(page.getTotalElements())

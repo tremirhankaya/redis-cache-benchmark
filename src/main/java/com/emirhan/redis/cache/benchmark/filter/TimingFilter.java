@@ -12,15 +12,7 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 
-/**
- * Her /api/products* isteğine iki header ekler:
- *   X-Response-Time-Ms  — sunucu tarafı süre
- *   X-Cache-Status      — HIT / MISS / DISABLED
- *
- * ContentCachingResponseWrapper kullanıyor çünkü Spring MVC, chain.doFilter()
- * sırasında response'u commit ediyor. Wrapper olmadan setHeader() çalışmaz.
- * copyBodyToResponse() ile body en sona yazılıyor, header'lar önce gidiyor.
- */
+
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor

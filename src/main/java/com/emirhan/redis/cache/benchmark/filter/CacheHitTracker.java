@@ -17,30 +17,23 @@ public final class CacheHitTracker {
 
     private CacheHitTracker() {}
 
-    /** Her request başında çağır — temiz state ile başla. */
     public static void clear() {
         CURRENT.remove();
     }
 
-    /** Cache DISABLED olduğunda (toggle OFF) çağır. */
     public static void markDisabled() {
         CURRENT.set(Status.DISABLED);
     }
 
-    /** Cache açık ama method body çalıştı → MISS. */
     public static void markMiss() {
         CURRENT.set(Status.MISS);
     }
 
-    /**
-     * Cache açık ve method body çalışmadı → HIT.
-     * TimingFilter: eğer service layer hiç mark etmediyse VE cache enabled ise → HIT.
-     */
+
     public static void markHit() {
         CURRENT.set(Status.HIT);
     }
 
-    /** Mevcut status — null ise henüz belirlenmedi. */
     public static Status getStatus() {
         return CURRENT.get();
     }

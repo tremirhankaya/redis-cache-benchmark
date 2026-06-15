@@ -19,18 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.emirhan.redis.cache.benchmark.dto.PageResponse;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Tüm cache mantığı burada — controller @Cacheable bilmiyor, servisi çağırıyor.
- * condition = "@cacheToggleServiceImpl.isEnabled()" runtime toggle:
- *   kapalıyken Redis'e bakmadan DB'ye gidiyor.
- *
- * HIT/MISS tespiti: @Cacheable method body çalışırsa → MISS (method body çağrıldı demek).
- *   Çalışmazsa Spring doğrudan cache'ten dönmüş demek → HIT.
- *   CacheHitTracker.markMiss() sadece method BODY'de çağrılıyor.
- *   TimingFilter, method bittiğinde status null ise VE cache enabled ise → HIT olarak kabul eder.
- */
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -83,17 +75,13 @@ public class ProductServiceImpl implements ProductService {
         trackMissOrDisabled();
         log.debug("DB hit: search q={}", q);
         if (q == null || q.isBlank()) {
-            return List.of();
+            return new ArrayList<>();
         }
         List<Product> result = productRepository.search(q.trim(), PageRequest.of(0, SEARCH_LIMIT));
-        return result.stream().map(ProductDto::from).toList();
+        return new ArrayList<>(result.stream().map(ProductDto::from).toList());
     }
 
-    /**
-     * Bu method SADECE @Cacheable'ın method body'sine girildiğinde çalışıyor.
-     * Cache HIT olursa Spring proxy method body'yi atlar → bu çağrılmaz → status null kalır.
-     * TimingFilter null gördüğünde HIT olarak işaretler.
-     */
+
     private void trackMissOrDisabled() {
         if (!cacheToggleService.isEnabled()) {
             CacheHitTracker.markDisabled();
