@@ -79,7 +79,6 @@ public class TestPrepServiceImpl implements TestPrepService {
                 case "baseline" -> prepareBaseline();
                 case "cold"     -> prepareCold();
                 case "warm"     -> prepareWarm();
-                case "mixed"    -> prepareMixed();
                 default -> {
                     fail("Bilinmeyen senaryo: " + scenario);
                     return;
@@ -124,19 +123,6 @@ public class TestPrepServiceImpl implements TestPrepService {
     }
 
 
-    private void prepareMixed() {
-        cacheToggleService.toggle(true);
-        cacheToggleService.clearAll();
-        progress("WARMUP_DB", 20);
-        warmupDatabase();
-        progress("WARMUP_CACHE", 40);
-        warmupListAndSearchCaches();
-
-        List<Long> all = productRepository.findAllIds();
-        Collections.shuffle(all, new Random(42));
-        List<Long> popular = all.subList(0, Math.min(MIXED_POPULAR_COUNT, all.size()));
-        warmupCache(popular, 50, 95);
-    }
 
     private void warmupListAndSearchCaches() {
 
