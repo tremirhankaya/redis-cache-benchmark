@@ -1,5 +1,7 @@
 # Performance Improvement in Spring Boot Applications Using Redis Caching
 
+**Full research paper:** [docs/redis-caching-performance-paper.pdf](docs/redis-caching-performance-paper.pdf)
+
 ## Overview
 
 This project evaluates the performance impact of integrating **Redis** as a caching layer into a **Spring Boot** application backed by **PostgreSQL**. The goal is to measure and analyze how response times and latency change under different cache states (Disabled, Cold Cache, and Warm Cache) during concurrent load testing.
